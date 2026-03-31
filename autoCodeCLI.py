@@ -7,38 +7,144 @@ client = Groq(
     api_key=os.getenv("GROQ_API_KEY"),
 )
 
+
+# ------------ TOOLS ------------
+
+def create_file(filename: str, content: str):
+    """Creates a file in the current directory with given content."""
+    filepath = os.path.join(os.getcwd(), filename)
+    with open(filepath, "w") as f:
+        f.write(content)
+        return f"File {filename} create successfully at {filepath}"
+
+def read_file(filename: str):
+    """Reads a file from the current directory."""
+    filepath = os.path.join(os.getcwd(), filename)
+    with open(filepath, 'r') as f:
+        return f.read()
+
+def edit_file(filename: str, content: str):
+    """Overwrites an existing file with new content."""
+    filepath = os.path.join(os.getcwd(), filename)
+    if not os.path(filepath) :
+        return f"File {filename} not found. Use create_file instead."
+    with open(filepath, "w") as f:
+        f.write(content)
+        return f"File {filename} updated successfully."
+
+def list_files():
+    """Lists all files in the current directory."""
+    files = os.listdir(os.getcwd())
+    return "\n".join(files)
+
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "create_file",
+            "decription": "Creates a file in the current directory with given content.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {"type": "string", "description": "Name of the file e.g. index.py"},
+                    "content": {"type": "string", "description": "Full content to write into the file"},
+                },
+                "required": ["filename", "content"]
+            }
+        }
+    },
+    
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "decription": "Reads a file from the current directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {"type": "string", "description": "Name of the file e.g. index.py"},
+                },
+                "required": ["filename"]
+            }
+        }
+    },
+
+    {
+        "type": "function",
+        "function": {
+            "name": "edit_file",
+            "decription": "Overwrites an existing file with new content.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {"type": "string", "description": "Name of the file e.g. index.py"},
+                    "content": {"type": "string", "description": "Full content to write into the file"},
+                },
+                "required": ["filename", "content"]
+            }
+        }
+    },
+
+    {
+        "type": "function",
+        "function": {
+            "name": "list_files",
+            "decription": "Lists all files in the current directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+]
+
+# ---------- TOOL DISPATCHER ----------
+
 system_prompt = """
-You are an expert Full Stack Software Engineer and Senior AI Engineer.
-Your goal is to help users build secure, scalable, production-level web applications.
+You are an elite Coding Assistant and Full Stack Software Engineer with deep expertise in web development, AI engineering, and system design.
 
-STRICT RULES — follow these without exception:
+YOUR GOAL: Help the user write, debug, review, and improve code to build secure, scalable, production-grade applications.
 
-1. SCOPE: You ONLY answer questions related to software engineering, web development, and AI engineering.
-   - If the user asks anything outside this scope, respond EXACTLY with:
-     {"error": "This is outside my scope. I can only help with software engineering and AI topics."}
+BEHAVIOR RULES:
 
-2. TONE: Respond like a strategic senior engineer — confident, clear, and direct.
+1. THINK BEFORE YOU CODE:
+   - Always briefly explain your approach before writing code.
+   - If multiple solutions exist, mention tradeoffs and recommend the best one.
 
-3. USER EXPERTISE: The user is a non-coder. Simplify technical terms but never compromise on correctness.
+2. CODE QUALITY:
+   - Always write clean, performant, production-ready code.
+   - Use proper indentation, meaningful variable names, and add inline comments where needed.
+   - Always specify the programming language in code blocks.
 
-4. CORRECTNESS: You are not a yes-man. If the user is wrong or there is a better solution:
-   - Respectfully correct them and propose the better alternative.
-   - Only back down if the user explicitly insists after hearing your reasoning.
+3. ADAPTIVE EXPERTISE:
+   - Detect the user's skill level from their message and adjust explanation depth accordingly.
+   - Beginners get more explanation. Experts get concise, direct answers.
 
-5. OUTPUT: Always respond in valid JSON. Keep responses organized and simple.
-   - Never exceed 250 tokens in your response.
+4. CORRECTNESS OVER POLITENESS:
+   - If the user's approach is wrong or inefficient, say so clearly and propose a better solution.
+   - Only change your recommendation if the user provides a valid technical reason.
 
-Examples of out-of-scope questions you must deny:
-- "How do I cook food?"
-- "What is the weather today?"
-- "Tell me a joke."
+5. SCOPE:
+   - Only answer questions related to coding, software engineering, web development, DevOps, and AI.
+   - For anything outside this scope respond with:
+     "That's outside my scope. I'm here to help you with coding and software engineering."
+
+6. DEBUGGING:
+   - When given an error, identify the root cause first, then provide the fix with explanation.
+
+7. FORMAT:
+   - Use markdown with proper code blocks for all code.
+   - Keep explanations concise but complete — never sacrifice clarity for brevity.
 """
 
 conversation_history = [
     {"role": "system", "content": system_prompt}
 ]
+
+print("🤖 Coding Assistant ready! Type 'exit' to quit.\n")
+
 while True:
-    message = input("You: ")
+    message = input("You: ").strip()
     
     if message.lower() == "exit":
         print("Goodbye!")
@@ -51,16 +157,22 @@ while True:
         {"role": "user", "content": message}
     )
 
-    chat_completion = client.chat.completions.create(
+    response = client.chat.completions.create(
         messages=conversation_history,
         model="llama-3.3-70b-versatile",
-        max_tokens=250
+        max_tokens=500,
+        tools=tools,
+        tool_choice="auto",
     )
 
-    response = chat_completion.choices[0].message.content
+    assistant_message = response.choices[0].message.content
+
+    # Check if AI wants to use a tool
+
+    
 
     conversation_history.append(
-        {"role": "assistant", "content": response}
+        {"role": "assistant", "content": assistant_message}
     )
 
-    print(f"Assistant: {response} \n")
+    print(f"Assistant: {assistant_message} \n")
