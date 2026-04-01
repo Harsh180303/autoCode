@@ -100,6 +100,20 @@ tools = [
 
 # ---------- TOOL DISPATCHER ----------
 
+def run_tool(tool_name: str, tool_args: dict):
+    """Runs the actual function based on the LLM's decision."""
+    if tool_name == "create_file":
+        return create_file(**tool_args)
+    elif tool_name == "read_file":
+        return read_file(**tool_args)
+    elif tool_name == "edit_file":
+        return edit_file(**tool_args)
+    elif tool_name == "list_files":
+        return list_files()
+    else:
+        return f"Unknown Tool {tool_name}"
+    
+
 system_prompt = """
 You are an elite Coding Assistant and Full Stack Software Engineer with deep expertise in web development, AI engineering, and system design.
 
