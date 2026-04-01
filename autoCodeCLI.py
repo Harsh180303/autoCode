@@ -1,4 +1,5 @@
 import os
+import json
 from dotenv import load_dotenv
 from groq import Groq
 load_dotenv()
@@ -15,7 +16,7 @@ def create_file(filename: str, content: str):
     filepath = os.path.join(os.getcwd(), filename)
     with open(filepath, "w") as f:
         f.write(content)
-        return f"File {filename} create successfully at {filepath}"
+    return f"File {filename} create successfully at {filepath}"
 
 def read_file(filename: str):
     """Reads a file from the current directory."""
@@ -26,11 +27,11 @@ def read_file(filename: str):
 def edit_file(filename: str, content: str):
     """Overwrites an existing file with new content."""
     filepath = os.path.join(os.getcwd(), filename)
-    if not os.path(filepath) :
+    if not os.path.exists(filepath) :
         return f"File {filename} not found. Use create_file instead."
     with open(filepath, "w") as f:
         f.write(content)
-        return f"File {filename} updated successfully."
+    return f"File {filename} updated successfully."
 
 def list_files():
     """Lists all files in the current directory."""
@@ -42,7 +43,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "create_file",
-            "decription": "Creates a file in the current directory with given content.",
+            "description": "Creates a file in the current directory with given content.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -58,7 +59,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "read_file",
-            "decription": "Reads a file from the current directory.",
+            "description": "Reads a file from the current directory.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -73,7 +74,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "edit_file",
-            "decription": "Overwrites an existing file with new content.",
+            "description": "Overwrites an existing file with new content.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -89,7 +90,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "list_files",
-            "decription": "Lists all files in the current directory.",
+            "description": "Lists all files in the current directory.",
             "parameters": {
                 "type": "object",
                 "properties": {}
@@ -115,6 +116,15 @@ def run_tool(tool_name: str, tool_args: dict):
     
 
 system_prompt = """
+CRITICAL TOOL INSTRUCTION:
+
+When calling a tool:
+- ONLY return valid JSON
+- DO NOT include <function> tags
+- DO NOT include markdown
+- DO NOT include explanation
+- ONLY return tool_calls
+
 You are an elite Coding Assistant and Full Stack Software Engineer with deep expertise in web development, AI engineering, and system design.
 
 YOUR GOAL: Help the user write, debug, review, and improve code to build secure, scalable, production-grade applications.
@@ -149,6 +159,14 @@ BEHAVIOR RULES:
 7. FORMAT:
    - Use markdown with proper code blocks for all code.
    - Keep explanations concise but complete — never sacrifice clarity for brevity.
+
+IMPORTANT TOOL USAGE RULE:
+
+- If a user request can be solved using a tool, you MUST call the tool.
+- DO NOT generate code manually when a tool is available.
+- ALWAYS return tool calls in proper JSON format.
+- NEVER wrap tool calls in <function> tags.
+- ONLY use the provided tool schema.
 """
 
 conversation_history = [
@@ -171,22 +189,60 @@ while True:
         {"role": "user", "content": message}
     )
 
-    response = client.chat.completions.create(
-        messages=conversation_history,
-        model="llama-3.3-70b-versatile",
-        max_tokens=500,
-        tools=tools,
-        tool_choice="auto",
-    )
+    # Send message + tools to AI
 
-    assistant_message = response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            messages=conversation_history,
+            model="llama-3.3-70b-versatile",
+            max_tokens=500,
+            tools=tools,
+            tool_choice="auto",
+        )
+    except Exception as e:
+        print("❌ API ERROR:", e)
+        continue
+
+    assistant_message = response.choices[0].message
+
+    print("\n FULL ASSISTANT MESSAGE:")
+    print(json.dumps(assistant_message.model_dump(), indent=2))
 
     # Check if AI wants to use a tool
+    if assistant_message.tool_calls:
+        conversation_history.append(assistant_message)
 
+        for tool_call in assistant_message.tool_calls:
+            tool_name = tool_call.function.name
+            tool_args = json.loads(tool_call.function.arguments)
+
+            print(f"\n⚙️ Using tool: {tool_name} with {list(tool_args.keys())}")
+
+            # Actually run the tool
+            tool_result = run_tool(tool_name, tool_args)
+            print(tool_result)
+
+            # send tool result back to AI
+            conversation_history.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": tool_result
+            })
+
+        # Get AI's final response after tool use
+        final_response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=conversation_history,
+            max_tokens=1000
+        )
+        final_text = final_response.choices[0].message.content
+        conversation_history.append({"role": "assistant", "content": final_text})
+
+        print(f"\nAssistant: {final_text}")
+
+    else:
+        # No tool needed - Plain text response
+        text = assistant_message.content
+        conversation_history.append({"role": "assistant", "content": text})
+        print(f"\nAssistant: {text}")
     
-
-    conversation_history.append(
-        {"role": "assistant", "content": assistant_message}
-    )
-
-    print(f"Assistant: {assistant_message} \n")
