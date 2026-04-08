@@ -114,6 +114,7 @@ def run_tool(tool_name: str, tool_args: dict):
     else:
         return f"Unknown Tool {tool_name}"
     
+MODEL = "openai/gpt-oss-20b"
 
 system_prompt = """
 CRITICAL TOOL INSTRUCTION:
@@ -194,8 +195,9 @@ while True:
     try:
         response = client.chat.completions.create(
             messages=conversation_history,
-            model="llama-3.3-70b-versatile",
-            max_tokens=500,
+            # model="llama-3.3-70b-versatile"
+            model=MODEL,
+            # max_tokens=500,
             tools=tools,
             tool_choice="auto",
         )
@@ -229,20 +231,29 @@ while True:
                 "content": tool_result
             })
 
-        # Get AI's final response after tool use
+        # Add tools back to the Api 
         final_response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=MODEL,
             messages=conversation_history,
-            max_tokens=1000
+            # max_tokens=1000,
+            tools=tools,
+            tool_choice="auto",
         )
         final_text = final_response.choices[0].message.content
-        conversation_history.append({"role": "assistant", "content": final_text})
+        if final_text:
+            conversation_history.append({"role": "assistant", "content": final_text})
 
-        print(f"\nAssistant: {final_text}")
+            print(f"\nAssistant: {final_text}")
 
+        else:
+            # If the model calls more tools, handle them
+            if final_response.choices[0].message.tool_calls:
+                print("\n Assistant needs to create more files...")
+                # You can loop again, but for now just inform the user
+                print("Please run the same request again to complete all files.")    
     else:
         # No tool needed - Plain text response
         text = assistant_message.content
-        conversation_history.append({"role": "assistant", "content": text})
-        print(f"\nAssistant: {text}")
-    
+        if text:
+            conversation_history.append({"role": "assistant", "content": text})
+            print(f"\nAssistant: {text}")
